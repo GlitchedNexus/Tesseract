@@ -1,4 +1,4 @@
 pub mod loss;
+pub mod types;
 
-pub type Matrix = nalgebra::DMatrix<f32>;
-pub type Vector = nalgebra::DVector<f32>;
+pub use types::{Float, Matrix, Result, TesseractError, Vector};

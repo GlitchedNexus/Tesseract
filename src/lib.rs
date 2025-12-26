@@ -7,7 +7,7 @@ pub mod optimizers;
 pub mod preprocessors;
 
 // Re-export public API
-pub use core::*;
+pub use core::{Float, Matrix, Result, TesseractError, Vector};
 pub use datasets::*;
 pub use io::*;
 pub use metrics::*;
