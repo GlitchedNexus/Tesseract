@@ -1,0 +1,8 @@
+[package]
+name = "lattice"
+version = "0.1.0"
+edition = "2024"
+description = "A machine learning library written in Rust."
+
+[dependencies]
+ndarray = "0.17.1"
