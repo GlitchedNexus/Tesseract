@@ -1,2 +1,17 @@
 # Tesseract
-A machine learning library in Rust.
+A multi-modal machine learning library in Rust. Suports ML for numerical, text and image data.
+
+## Principals
+1. Minimal external dependencies and resource usage.
+2. Proper documentation for streamlined developer expirience.
+
+
+## Model List
+[ ] k-NN
+[ ] K-Means
+[ ] Decision Stump
+[ ] Decision Tree
+[ ] Random Tree
+[ ] Linear Regression
+[ ] Logistic Regression
+[ ] Naive Bayes

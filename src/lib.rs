@@ -1,17 +1,16 @@
-//! Lattice is minimal machine learning library
-//! with a simple API
-
 pub mod core;
-pub mod encoders;
+pub mod datasets;
 pub mod io;
 pub mod metrics;
 pub mod models;
 pub mod optimizers;
+pub mod preprocessors;
 
 // Re-export public API
 pub use core::*;
-pub use encoders::*;
+pub use datasets::*;
 pub use io::*;
 pub use metrics::*;
 pub use models::*;
 pub use optimizers::*;
+pub use preprocessors::*;
