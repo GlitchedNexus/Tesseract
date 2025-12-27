@@ -19,6 +19,12 @@ pub enum TesseractError {
 
     /// Feature not enabled at compile time
     FeatureDisabled(&'static str),
+
+    /// The training dataset contains zero samples.
+    EmptyTrainingData,
+
+    /// Insufficient training data for hyper param
+    InsufficientTrainingData,
 }
 
 impl fmt::Display for TesseractError {
