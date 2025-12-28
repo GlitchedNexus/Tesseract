@@ -1,0 +1,19 @@
+[package]
+name = "tesseract"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+license.workspace = true
+
+[dependencies]
+tesseract-core = { path = "../tesseract-core" }
+tesseract-io = { path = "../tesseract-io", default-features = false }
+tesseract-metrics = { path = "../tesseract-metrics" }
+tesseract-models = { path = "../tesseract-models", default-features = false }
+tesseract-optimizers = { path = "../tesseract-optimizers" }
+tesseract-preprocessors = { path = "../tesseract-preprocessors" }
+
+[features]
+default = ["io-csv", "rng"]
+io-csv = ["tesseract-io/io-csv"]
+rng = ["tesseract-models/rng"]

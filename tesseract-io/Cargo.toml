@@ -1,0 +1,14 @@
+[package]
+name = "tesseract-io"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+license.workspace = true
+
+[dependencies]
+tesseract-core = { path = "../tesseract-core" }
+csv = { workspace = true, optional = true }
+
+[features]
+default = []
+io-csv = ["dep:csv"]

@@ -414,9 +414,64 @@ dependencies = [
 name = "tesseract"
 version = "0.1.0"
 dependencies = [
- "csv",
+ "tesseract-core",
+ "tesseract-io",
+ "tesseract-metrics",
+ "tesseract-models",
+ "tesseract-optimizers",
+ "tesseract-preprocessors",
+]
+
+[[package]]
+name = "tesseract-core"
+version = "0.1.0"
+dependencies = [
  "nalgebra",
+]
+
+[[package]]
+name = "tesseract-datasets"
+version = "0.1.0"
+dependencies = [
  "rand",
+ "tesseract-core",
+]
+
+[[package]]
+name = "tesseract-io"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "tesseract-core",
+]
+
+[[package]]
+name = "tesseract-metrics"
+version = "0.1.0"
+dependencies = [
+ "tesseract-core",
+]
+
+[[package]]
+name = "tesseract-models"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "tesseract-core",
+]
+
+[[package]]
+name = "tesseract-optimizers"
+version = "0.1.0"
+dependencies = [
+ "tesseract-core",
+]
+
+[[package]]
+name = "tesseract-preprocessors"
+version = "0.1.0"
+dependencies = [
+ "tesseract-core",
 ]
 
 [[package]]

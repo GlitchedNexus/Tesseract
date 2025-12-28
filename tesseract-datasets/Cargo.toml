@@ -1,0 +1,14 @@
+[package]
+name = "tesseract-datasets"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+license.workspace = true
+
+[dependencies]
+tesseract-core = { path = "../tesseract-core" }
+rand = { workspace = true, optional = true }
+
+[features]
+default = []
+rng = ["dep:rand"]
