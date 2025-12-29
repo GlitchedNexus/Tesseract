@@ -28,6 +28,12 @@ pub enum TesseractError {
 
     /// Invalid value
     InvalidValue { message: String },
+
+    /// Encountered Internal Error.
+    InternalError,
+
+    /// Invalid Training Error.
+    InvalidTrainingData,
 }
 
 impl fmt::Display for TesseractError {
