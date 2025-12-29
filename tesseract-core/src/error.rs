@@ -25,6 +25,9 @@ pub enum TesseractError {
 
     /// Insufficient training data for hyper param
     InsufficientTrainingData,
+
+    /// Invalid Hyperparameter Value
+    InvalidHyperparameter { name: String, value: String },
 }
 
 impl fmt::Display for TesseractError {
