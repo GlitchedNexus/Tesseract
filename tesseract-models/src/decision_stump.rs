@@ -1,5 +1,4 @@
-use std::{collections::HashMap, fmt::Debug};
-use tesseract_core::{Float, Label, Matrix, Predictions, Result, TesseractError};
+use tesseract_core::{Float, Label, Matrix, Predictions, Result, TesseractError, gini_from_counts};
 
 #[derive(Debug, Clone)]
 pub struct DecisionStump {
@@ -29,117 +28,105 @@ impl DecisionStump {
 
     pub fn fit(&mut self, x: &Matrix, y: &Predictions) -> Result<()> {
         let n = x.nrows();
-
-        if n < 1 {
+        if n == 0 {
             return Err(TesseractError::EmptyTrainingData);
         }
-
         let d = x.ncols();
 
-        let mut best_feature: usize = 0;
+        if y.len() != n {
+            return Err(TesseractError::ShapeMismatch {
+                expected: format!("Expected {} sample labels", n),
+                got: format!("Got {} sample labels", y.len()),
+            });
+        }
+
+        // --- Determine number of classes (assumes dense 0..C-1) ---
+        let &max_label = y.iter().max().ok_or(TesseractError::InvalidTrainingData)?;
+        let num_classes = max_label + 1;
+
+        let mut best_feature = 0usize;
         let mut best_threshold: Float = 0.0;
-        let mut best_gini: Float = Float::INFINITY;
-        let mut best_labels: (Label, Label) = (0, 0);
+        let mut best_score: Float = Float::INFINITY;
+        let mut best_left_label: Label = 0;
+        let mut best_right_label: Label = 0;
+
+        // Reused buffers
+        let mut pairs: Vec<(Float, Label)> = Vec::with_capacity(n);
+        let mut left_counts = vec![0usize; num_classes];
+        let mut right_counts = vec![0usize; num_classes];
 
         for feature in 0..d {
+            pairs.clear();
+
+            // Build (value, label) for this feature
+            // Also validate NaNs once here.
             let col = x.column(feature);
+            for i in 0..n {
+                let v = col[i];
+                if v.is_nan() {
+                    return Err(TesseractError::InvalidValue {
+                        message: "Expected float got NaN.".into(),
+                    });
+                }
+                pairs.push((v, y[i]));
+            }
 
-            for threshold in col {
-                let mut left: Predictions = Vec::new();
-                let mut right: Predictions = Vec::new();
+            // Sort by feature value
+            pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
 
-                for i in 0..n {
-                    match col.get(i) {
-                        Some(val) => {
-                            if val.is_nan() {
-                                return Err(TesseractError::InvalidValue {
-                                    message: String::from("Expected float got NaN."),
-                                });
-                            }
+            // Init counts: all samples on the right initially
+            left_counts.fill(0);
+            right_counts.fill(0);
+            for &(_, label) in &pairs {
+                if label >= num_classes {
+                    return Err(TesseractError::InvalidTrainingData);
+                }
+                right_counts[label] += 1;
+            }
 
-                            if val <= threshold {
-                                left.push(i);
-                            } else {
-                                right.push(i);
-                            }
-                        }
+            let mut n_left = 0usize;
+            let mut n_right = n;
 
-                        None => {
-                            return Err(TesseractError::InternalError);
-                        }
-                    }
+            // Sweep split point between i and i+1
+            for i in 0..(n - 1) {
+                let (v_i, label_i) = pairs[i];
+
+                // Move sample i from right -> left
+                left_counts[label_i] += 1;
+                right_counts[label_i] -= 1;
+                n_left += 1;
+                n_right -= 1;
+
+                let v_next = pairs[i + 1].0;
+                if v_i == v_next {
+                    continue; // no threshold between equal values
                 }
 
-                let mut gini_left: f32 = 0.0;
-                let n_left = left.len();
+                // Compute weighted gini
+                let g_l = gini_from_counts(&left_counts, n_left);
+                let g_r = gini_from_counts(&right_counts, n_right);
 
-                let mut gini_right: f32 = 0.0;
-                let n_right = right.len();
+                let w_l = n_left as Float / n as Float;
+                let w_r = n_right as Float / n as Float;
+                let score = w_l * g_l + w_r * g_r;
 
-                let mut labels_left: HashMap<Label, usize> = HashMap::new();
-                let mut labels_right: HashMap<Label, usize> = HashMap::new();
-
-                for (_, index) in left.iter().enumerate() {
-                    let label = y.get(*index);
-                    match label {
-                        Some(l) => {
-                            let c = labels_left.entry(*l).or_insert(0);
-                            *c += 1;
-                        }
-                        None => return Err(TesseractError::InvalidTrainingData),
-                    }
-                }
-
-                for (_, index) in right.iter().enumerate() {
-                    let label = y.get(*index);
-                    match label {
-                        Some(l) => {
-                            let c = labels_right.entry(*l).or_insert(0);
-                            *c += 1;
-                        }
-                        None => return Err(TesseractError::InvalidTrainingData),
-                    }
-                }
-
-                let mut sum_sq = 0.0;
-                for &count in labels_left.values() {
-                    let p = count as Float / n_left as Float;
-                    sum_sq += p * p;
-                }
-                let gini_left = 1.0 - sum_sq;
-
-                let mut sum_sq = 0.0;
-                for &count in labels_right.values() {
-                    let p = count as Float / n_right as Float;
-                    sum_sq += p * p;
-                }
-                let gini_right = 1.0 - sum_sq;
-
-                let w_left = n_left as Float / n as Float;
-                let w_right = n_right as Float / n as Float;
-                let gini = w_left * gini_left + w_right * gini_right;
-
-                if gini <= best_gini {
+                if score < best_score {
+                    best_score = score;
                     best_feature = feature;
-                    best_threshold = *threshold;
-                    best_gini = gini;
+                    best_threshold = (v_i + v_next) * 0.5;
 
-                    let (left_label, _) =
-                        labels_left.iter().max_by_key(|&(_, count)| count).unwrap();
-
-                    let (right_label, _) =
-                        labels_right.iter().max_by_key(|&(_, count)| count).unwrap();
-
-                    best_labels = (*left_label, *right_label)
+                    // Majority labels for leaf predictions
+                    best_left_label = argmax_count(&left_counts);
+                    best_right_label = argmax_count(&right_counts);
                 }
             }
         }
 
         self.feature_index = best_feature;
-        self.feature_threshold = best_threshold;
+        self.feature_threshold = best_threshold; // or feature_threshold; keep one field
+        self.left_class = best_left_label;
+        self.right_class = best_right_label;
         self.fitted = true;
-        self.left_class = best_labels.0;
-        self.right_class = best_labels.1;
 
         Ok(())
     }
@@ -172,4 +159,16 @@ impl DecisionStump {
 
         Ok(predictions)
     }
+}
+
+fn argmax_count(counts: &[usize]) -> Label {
+    let mut best_label = 0usize;
+    let mut best = 0usize;
+    for (label, &c) in counts.iter().enumerate() {
+        if c > best {
+            best = c;
+            best_label = label;
+        }
+    }
+    best_label
 }
