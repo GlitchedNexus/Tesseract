@@ -102,7 +102,9 @@ impl KNN {
 
                 // If NaNs are possible, you can skip or error:
                 if dist2.is_nan() {
-                    continue; // or: return Err(TesseractError::InvalidValue { ... })
+                    return Err(TesseractError::InvalidValue {
+                        message: String::from("Encountered NaN when calculating distance."),
+                    });
                 }
 
                 let cand = Neighbour { dist2, idx: j };

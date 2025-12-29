@@ -14,9 +14,6 @@ pub enum TesseractError {
     /// Model used before calling `fit`
     NotFitted,
 
-    /// Invalid hyperparameter or configuration
-    InvalidParameter(String),
-
     /// Feature not enabled at compile time
     FeatureDisabled(&'static str),
 
@@ -28,6 +25,9 @@ pub enum TesseractError {
 
     /// Invalid Hyperparameter Value
     InvalidHyperparameter { name: String, value: String },
+
+    /// Invalid value
+    InvalidValue { message: String },
 }
 
 impl fmt::Display for TesseractError {
