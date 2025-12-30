@@ -1,17 +1,25 @@
-pub struct LogisticRegressions {}
+use tesseract_core::{Matrix, Result};
 
-impl Default for LogisticRegressions {
+pub struct LogisticRegression {
+    bias: Option<Matrix>,
+    weights: Option<Matrix>,
+}
+
+impl Default for LogisticRegression {
     fn default() -> Self {
-        Self {}
+        Self {
+            bias: None,
+            weights: None,
+        }
     }
 }
 
-impl LogisticRegressions {
-    pub fn new() {
-        Self::default();
+impl LogisticRegression {
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn fit() {}
+    pub fn fit(&self) {}
 
-    pub fn predict() {}
+    pub fn predict(&self, x: &Matrix) {}
 }

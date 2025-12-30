@@ -1,3 +1,5 @@
+use tesseract_core::{Predictions, Result};
+
 pub struct NaiveBayes {}
 
 impl Default for NaiveBayes {
@@ -7,10 +9,13 @@ impl Default for NaiveBayes {
 }
 
 impl NaiveBayes {
-    pub fn new() {
-        Self::default();
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn fit() {}
-    pub fn predict() {}
+    pub fn predict() -> Result<Predictions> {
+        let predictions = vec![0usize; 5];
+        Ok(predictions)
+    }
 }
