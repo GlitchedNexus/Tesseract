@@ -7,7 +7,11 @@ impl Default for DecisionTree {
 }
 
 impl DecisionTree {
-    pub fn new() {}
+    pub fn new() {
+        Self::default();
+    }
+
     pub fn fit() {}
+
     pub fn predict() {}
 }

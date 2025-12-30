@@ -7,11 +7,11 @@ A multi-modal machine learning library in Rust. Suports ML for numerical, text a
 
 
 ## Model List
-[ ] k-NN
-[ ] K-Means
-[ ] Decision Stump
-[ ] Decision Tree
-[ ] Random Tree
-[ ] Linear Regression
-[ ] Logistic Regression
-[ ] Naive Bayes
+- [x] k-NN
+- [ ] K-Means
+- [x] Decision Stump
+- [ ] Decision Tree
+- [ ] Random Tree
+- [ ] Linear Regression
+- [ ] Logistic Regression
+- [ ] Naive Bayes

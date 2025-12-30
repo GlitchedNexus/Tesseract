@@ -1,12 +1,12 @@
-pub struct RandomTree {}
+pub struct NaiveBayes {}
 
-impl Default for RandomTree {
+impl Default for NaiveBayes {
     fn default() -> Self {
         Self {}
     }
 }
 
-impl RandomTree {
+impl NaiveBayes {
     pub fn new() {
         Self::default();
     }
