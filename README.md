@@ -15,3 +15,4 @@ A multi-modal machine learning library in Rust. Suports ML for numerical, text a
 - [ ] Linear Regression
 - [ ] Logistic Regression
 - [ ] Naive Bayes
+- [ ] Neural Network
