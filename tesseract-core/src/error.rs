@@ -20,20 +20,23 @@ pub enum TesseractError {
     /// The training dataset contains zero samples.
     EmptyTrainingData,
 
-    /// Insufficient training data for hyper param
+    /// Insufficient training data for hyper param.
     InsufficientTrainingData,
 
     /// Invalid Hyperparameter Value
     InvalidHyperparameter { name: String, value: String },
 
-    /// Invalid value
+    /// Invalid value.
     InvalidValue { message: String },
 
-    /// Encountered Internal Error.
+    /// Encountered internal error.
     InternalError,
 
-    /// Invalid Training Error.
+    /// Invalid training error.
     InvalidTrainingData,
+
+    /// Calculation resulted in a singular matrix.
+    SingularMatrix,
 }
 
 impl fmt::Display for TesseractError {
