@@ -1,1 +1,0 @@
-std::result::Result<nalgebra::Matrix<usize, Dyn, Const<1>, VecStorage<usize, Dyn, Const<1>>>, TesseractError>
