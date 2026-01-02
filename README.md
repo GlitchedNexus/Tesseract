@@ -126,3 +126,9 @@ APIs may evolve as models and abstractions mature.
 ## License
 
 MIT License.
+
+---
+
+## Documentation
+
+Additional design and architecture documentation is available in the `docs/` directory.
