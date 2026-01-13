@@ -1,3 +1,4 @@
+pub mod cnn;
 pub mod decision_stump;
 pub mod decision_tree;
 pub mod k_means;
