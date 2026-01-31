@@ -1,10 +1,4 @@
-pub mod cnn;
 pub mod decision_stump;
 pub mod decision_tree;
-pub mod k_means;
 pub mod knn;
 pub mod linear_regression;
-pub mod logistic_regression;
-pub mod naive_bayes;
-pub mod neural_network;
-pub mod random_tree;
