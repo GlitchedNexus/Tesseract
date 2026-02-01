@@ -7,9 +7,9 @@ license.workspace = true
 
 [dependencies]
 tesseract-core = { path = "../tesseract-core" }
-tesseract-io = { path = "../tesseract-io", default-features = false }
+tesseract-io = { path = "../tesseract-io", default-features = true }
 tesseract-metrics = { path = "../tesseract-metrics" }
-tesseract-models = { path = "../tesseract-models", default-features = false }
+tesseract-models = { path = "../tesseract-models", default-features = true }
 tesseract-optimizers = { path = "../tesseract-optimizers" }
 tesseract-preprocessors = { path = "../tesseract-preprocessors" }
 

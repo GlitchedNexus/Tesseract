@@ -1,3 +1,5 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use tesseract_core::{Matrix, Predictions, Result, TesseractError};
@@ -76,6 +78,8 @@ impl Ord for Neighbour {
 ///
 /// - This implementation assumes `Predictions` is the label vector type (e.g. `Vec<usize>`).
 /// - If distance computation produces `NaN`, prediction returns [`TesseractError::InvalidValue`].
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug)]
 pub struct KNN {
     dataset: Option<Matrix>,
     labels: Option<Predictions>,
@@ -357,11 +361,7 @@ mod tests {
     #[test]
     fn test_knn_k1_nearest_neighbor() {
         let mut knn = KNN::new();
-        let x_train = matrix_from_vec(vec![
-            vec![0.0, 0.0],
-            vec![1.0, 1.0],
-            vec![5.0, 5.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![0.0, 0.0], vec![1.0, 1.0], vec![5.0, 5.0]]);
         let y_train = vec![0, 1, 2];
         knn.fit(&x_train, &y_train, 1);
 
@@ -398,20 +398,12 @@ mod tests {
     #[test]
     fn test_knn_multiple_queries() {
         let mut knn = KNN::new();
-        let x_train = matrix_from_vec(vec![
-            vec![0.0, 0.0],
-            vec![1.0, 1.0],
-            vec![10.0, 10.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![0.0, 0.0], vec![1.0, 1.0], vec![10.0, 10.0]]);
         let y_train = vec![0, 0, 1];
         knn.fit(&x_train, &y_train, 2);
 
         // Multiple test samples
-        let x_test = matrix_from_vec(vec![
-            vec![0.5, 0.5],
-            vec![9.5, 9.5],
-            vec![0.0, 0.0],
-        ]);
+        let x_test = matrix_from_vec(vec![vec![0.5, 0.5], vec![9.5, 9.5], vec![0.0, 0.0]]);
         let result = knn.predict(&x_test).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], 0); // closer to [0, 0] and [1, 1]
@@ -445,10 +437,7 @@ mod tests {
     #[test]
     fn test_knn_with_nan_returns_error() {
         let mut knn = KNN::new();
-        let x_train = matrix_from_vec(vec![
-            vec![0.0, 0.0],
-            vec![1.0, 1.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![0.0, 0.0], vec![1.0, 1.0]]);
         let y_train = vec![0, 1];
         knn.fit(&x_train, &y_train, 1);
 
@@ -461,11 +450,7 @@ mod tests {
     #[test]
     fn test_knn_single_class() {
         let mut knn = KNN::new();
-        let x_train = matrix_from_vec(vec![
-            vec![0.0, 0.0],
-            vec![1.0, 1.0],
-            vec![2.0, 2.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![0.0, 0.0], vec![1.0, 1.0], vec![2.0, 2.0]]);
         let y_train = vec![0, 0, 0]; // all same class
         knn.fit(&x_train, &y_train, 2);
 
@@ -488,11 +473,7 @@ mod tests {
         let y_train = vec![0, 0, 1, 1, 2, 2];
         knn.fit(&x_train, &y_train, 3);
 
-        let x_test = matrix_from_vec(vec![
-            vec![0.0, 0.0],
-            vec![5.0, 5.0],
-            vec![10.0, 10.0],
-        ]);
+        let x_test = matrix_from_vec(vec![vec![0.0, 0.0], vec![5.0, 5.0], vec![10.0, 10.0]]);
         let result = knn.predict(&x_test).unwrap();
         assert_eq!(result, vec![0, 1, 2]);
     }
@@ -500,11 +481,7 @@ mod tests {
     #[test]
     fn test_knn_1d_features() {
         let mut knn = KNN::new();
-        let x_train = matrix_from_vec(vec![
-            vec![0.0],
-            vec![1.0],
-            vec![10.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![0.0], vec![1.0], vec![10.0]]);
         let y_train = vec![0, 0, 1];
         knn.fit(&x_train, &y_train, 2);
 
@@ -529,5 +506,102 @@ mod tests {
         let x_test = matrix_from_vec(vec![vec![0.5, 0.5, 0.5, 0.5, 0.5]]);
         let result = knn.predict(&x_test).unwrap();
         assert_eq!(result, vec![0]);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_knn_serialize_deserialize_json() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 1.0],
+            vec![10.0, 10.0],
+        ]);
+        let y_train = vec![0, 0, 1];
+        knn.fit(&x_train, &y_train, 2);
+
+        // Serialize to JSON
+        let serialized = serde_json::to_string(&knn).expect("Failed to serialize");
+        assert!(!serialized.is_empty());
+
+        // Deserialize from JSON
+        let deserialized: KNN = serde_json::from_str(&serialized).expect("Failed to deserialize");
+
+        // Test that deserialized model works
+        let x_test = matrix_from_vec(vec![vec![0.5, 0.5], vec![9.5, 9.5]]);
+        let result_original = knn.predict(&x_test).unwrap();
+        let result_deserialized = deserialized.predict(&x_test).unwrap();
+
+        assert_eq!(result_original, result_deserialized);
+        assert_eq!(result_deserialized[0], 0);
+        assert_eq!(result_deserialized[1], 1);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_knn_serialize_deserialize_postcard() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 2.0],
+            vec![3.0, 4.0],
+            vec![5.0, 6.0],
+        ]);
+        let y_train = vec![0, 1, 1];
+        knn.fit(&x_train, &y_train, 3);
+
+        // Serialize using serde (via postcard-compatible format)
+        let serialized = serde_json::to_vec(&knn).expect("Failed to serialize");
+        assert!(!serialized.is_empty());
+
+        // Deserialize
+        let deserialized: KNN = serde_json::from_slice(&serialized).expect("Failed to deserialize");
+
+        // Verify predictions match
+        let x_test = matrix_from_vec(vec![vec![2.0, 3.0]]);
+        let result_original = knn.predict(&x_test).unwrap();
+        let result_deserialized = deserialized.predict(&x_test).unwrap();
+
+        assert_eq!(result_original, result_deserialized);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_knn_serialize_unfitted() {
+        let knn = KNN::new();
+
+        // Should be able to serialize unfitted model
+        let serialized = serde_json::to_string(&knn).expect("Failed to serialize");
+        let deserialized: KNN = serde_json::from_str(&serialized).expect("Failed to deserialize");
+
+        // Both should fail with NotFitted
+        let x_test = matrix_from_vec(vec![vec![1.0, 2.0]]);
+        assert!(matches!(knn.predict(&x_test), Err(TesseractError::NotFitted)));
+        assert!(matches!(deserialized.predict(&x_test), Err(TesseractError::NotFitted)));
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_knn_roundtrip_preserves_k() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![4.0],
+            vec![5.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1, 1];
+        knn.fit(&x_train, &y_train, 3);
+
+        // Serialize and deserialize
+        let serialized = serde_json::to_string(&knn).unwrap();
+        let deserialized: KNN = serde_json::from_str(&serialized).unwrap();
+
+        // k should be preserved (test by checking predictions are identical)
+        let x_test = matrix_from_vec(vec![vec![2.5], vec![4.5]]);
+        let result_original = knn.predict(&x_test).unwrap();
+        let result_deserialized = deserialized.predict(&x_test).unwrap();
+
+        assert_eq!(result_original, result_deserialized);
     }
 }

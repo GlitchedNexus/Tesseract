@@ -17,9 +17,10 @@ description = "A machine learning library written in Rust."
 license = "MIT"
 
 [workspace.dependencies]
-nalgebra = "0.34"
+nalgebra = { version = "0.34", features = ["serde-serialize"] }
 csv = "1.4"
 rand = "0.9"
 rayon = "1.11"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 rkyv = "0.8"

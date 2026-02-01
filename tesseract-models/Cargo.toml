@@ -12,9 +12,13 @@ rayon = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 rkyv = { workspace = true, optional = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+rkyv = { workspace = true }
+
 [features]
 default = []
 rng = ["dep:rand"]
 parallel = ["dep:rayon"]
-serde = ["dep:serde"]
 rkyv = ["dep:rkyv"]
+serde = ["dep:serde"]

@@ -1,3 +1,5 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use tesseract_core::{Float, Label, Matrix, Predictions, Result, TesseractError, gini_from_counts};
 
 /// A **decision stump**: a decision tree with depth 1 (a single split).
@@ -30,6 +32,7 @@ use tesseract_core::{Float, Label, Matrix, Predictions, Result, TesseractError, 
 /// - `left_class`: The predicted label for samples with `x[feature_index] <= feature_threshold`.
 /// - `right_class`: The predicted label for samples with `x[feature_index] > feature_threshold`.
 /// - `fitted`: Whether [`fit`](DecisionStump::fit) has been called successfully.
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
 pub struct DecisionStump {
     /// Index of the feature used for splitting.
@@ -327,10 +330,7 @@ mod tests {
     #[test]
     fn test_decision_stump_with_nan() {
         let mut stump = DecisionStump::new();
-        let x_train = matrix_from_vec(vec![
-            vec![1.0, 2.0],
-            vec![f32::NAN, 4.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![1.0, 2.0], vec![f32::NAN, 4.0]]);
         let y_train = vec![0, 1];
         let result = stump.fit(&x_train, &y_train);
         assert!(matches!(result, Err(TesseractError::InvalidValue { .. })));
@@ -352,10 +352,7 @@ mod tests {
         stump.fit(&x_train, &y_train).unwrap();
 
         // Test predictions
-        let x_test = matrix_from_vec(vec![
-            vec![1.5, 0.0],
-            vec![9.5, 0.0],
-        ]);
+        let x_test = matrix_from_vec(vec![vec![1.5, 0.0], vec![9.5, 0.0]]);
         let result = stump.predict(&x_test).unwrap();
         assert_eq!(result[0], 0); // should be left class
         assert_eq!(result[1], 1); // should be right class
@@ -401,10 +398,7 @@ mod tests {
         let y_train = vec![0, 0, 1, 1];
         stump.fit(&x_train, &y_train).unwrap();
 
-        let x_test = matrix_from_vec(vec![
-            vec![1.0, 1.5],
-            vec![9.0, 1.5],
-        ]);
+        let x_test = matrix_from_vec(vec![vec![1.0, 1.5], vec![9.0, 1.5]]);
         let result = stump.predict(&x_test).unwrap();
         assert_eq!(result[0], 0);
         assert_eq!(result[1], 1);
@@ -438,11 +432,7 @@ mod tests {
     fn test_decision_stump_single_class() {
         let mut stump = DecisionStump::new();
         // All same class - no useful split possible
-        let x_train = matrix_from_vec(vec![
-            vec![1.0, 2.0],
-            vec![3.0, 4.0],
-            vec![5.0, 6.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]]);
         let y_train = vec![0, 0, 0];
         stump.fit(&x_train, &y_train).unwrap();
 
@@ -456,12 +446,7 @@ mod tests {
     fn test_decision_stump_threshold_placement() {
         let mut stump = DecisionStump::new();
         // Test that threshold is placed between values
-        let x_train = matrix_from_vec(vec![
-            vec![1.0],
-            vec![2.0],
-            vec![8.0],
-            vec![9.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![1.0], vec![2.0], vec![8.0], vec![9.0]]);
         let y_train = vec![0, 0, 1, 1];
         stump.fit(&x_train, &y_train).unwrap();
 
@@ -527,8 +512,8 @@ mod tests {
             vec![1.0],
             vec![2.0],
             vec![3.0],
-            vec![4.0],  // noisy sample
-            vec![7.0],  // noisy sample
+            vec![4.0], // noisy sample
+            vec![7.0], // noisy sample
             vec![8.0],
             vec![9.0],
             vec![10.0],
@@ -547,10 +532,7 @@ mod tests {
     #[test]
     fn test_decision_stump_predict_shape_mismatch() {
         let mut stump = DecisionStump::new();
-        let x_train = matrix_from_vec(vec![
-            vec![1.0, 2.0],
-            vec![3.0, 4.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
         let y_train = vec![0, 1];
         stump.fit(&x_train, &y_train).unwrap();
 
@@ -567,22 +549,12 @@ mod tests {
     #[test]
     fn test_decision_stump_multiple_predictions() {
         let mut stump = DecisionStump::new();
-        let x_train = matrix_from_vec(vec![
-            vec![1.0],
-            vec![2.0],
-            vec![8.0],
-            vec![9.0],
-        ]);
+        let x_train = matrix_from_vec(vec![vec![1.0], vec![2.0], vec![8.0], vec![9.0]]);
         let y_train = vec![0, 0, 1, 1];
         stump.fit(&x_train, &y_train).unwrap();
 
         // Multiple test samples
-        let x_test = matrix_from_vec(vec![
-            vec![1.5],
-            vec![8.5],
-            vec![5.0],
-            vec![0.5],
-        ]);
+        let x_test = matrix_from_vec(vec![vec![1.5], vec![8.5], vec![5.0], vec![0.5]]);
         let result = stump.predict(&x_test).unwrap();
         assert_eq!(result.len(), 4);
         // Verify each prediction is valid
@@ -649,5 +621,134 @@ mod tests {
         let result = stump.predict(&x_test).unwrap();
         // Should still make reasonable predictions
         assert!(result.iter().all(|&label| label <= 1));
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_decision_stump_serialize_deserialize_json() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 2.0],
+            vec![2.0, 3.0],
+            vec![8.0, 9.0],
+            vec![9.0, 10.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Serialize to JSON
+        let serialized = serde_json::to_string(&stump).expect("Failed to serialize");
+        assert!(!serialized.is_empty());
+
+        // Deserialize from JSON
+        let deserialized: DecisionStump = serde_json::from_str(&serialized).expect("Failed to deserialize");
+
+        // Test that deserialized model works
+        let x_test = matrix_from_vec(vec![vec![1.5, 2.5], vec![8.5, 9.5]]);
+        let result_original = stump.predict(&x_test).unwrap();
+        let result_deserialized = deserialized.predict(&x_test).unwrap();
+
+        assert_eq!(result_original, result_deserialized);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_decision_stump_serialize_deserialize_binary() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0],
+            vec![1.0],
+            vec![2.0],
+            vec![7.0],
+            vec![8.0],
+            vec![9.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Serialize using serde (binary format via JSON bytes)
+        let serialized = serde_json::to_vec(&stump).expect("Failed to serialize");
+        assert!(!serialized.is_empty());
+
+        // Deserialize
+        let deserialized: DecisionStump = serde_json::from_slice(&serialized).expect("Failed to deserialize");
+
+        // Verify predictions match
+        let x_test = matrix_from_vec(vec![vec![1.5], vec![8.5]]);
+        let result_original = stump.predict(&x_test).unwrap();
+        let result_deserialized = deserialized.predict(&x_test).unwrap();
+
+        assert_eq!(result_original, result_deserialized);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_decision_stump_serialize_unfitted() {
+        let stump = DecisionStump::new();
+
+        // Should be able to serialize unfitted model
+        let serialized = serde_json::to_string(&stump).expect("Failed to serialize");
+        let deserialized: DecisionStump = serde_json::from_str(&serialized).expect("Failed to deserialize");
+
+        // Both should fail with NotFitted
+        let x_test = matrix_from_vec(vec![vec![1.0, 2.0]]);
+        assert!(matches!(stump.predict(&x_test), Err(TesseractError::NotFitted)));
+        assert!(matches!(deserialized.predict(&x_test), Err(TesseractError::NotFitted)));
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_decision_stump_roundtrip_preserves_state() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 5.0],
+            vec![2.0, 6.0],
+            vec![8.0, 1.0],
+            vec![9.0, 2.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Serialize and deserialize
+        let serialized = serde_json::to_string(&stump).unwrap();
+        let deserialized: DecisionStump = serde_json::from_str(&serialized).unwrap();
+
+        // All internal state should be preserved
+        assert_eq!(stump.feature_index, deserialized.feature_index);
+        assert_eq!(stump.feature_threshold, deserialized.feature_threshold);
+        assert_eq!(stump.left_class, deserialized.left_class);
+        assert_eq!(stump.right_class, deserialized.right_class);
+        assert_eq!(stump.fitted, deserialized.fitted);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_decision_stump_clone_and_serialize() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![8.0],
+            vec![9.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Clone the stump
+        let cloned = stump.clone();
+
+        // Serialize both
+        let serialized_original = serde_json::to_string(&stump).unwrap();
+        let serialized_cloned = serde_json::to_string(&cloned).unwrap();
+
+        // Should produce identical serialization
+        assert_eq!(serialized_original, serialized_cloned);
+
+        // Both should make identical predictions
+        let x_test = matrix_from_vec(vec![vec![1.5], vec![8.5]]);
+        let result_original = stump.predict(&x_test).unwrap();
+        let result_cloned = cloned.predict(&x_test).unwrap();
+
+        assert_eq!(result_original, result_cloned);
     }
 }
