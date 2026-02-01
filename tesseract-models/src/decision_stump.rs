@@ -2,6 +2,9 @@
 use serde::{Deserialize, Serialize};
 use tesseract_core::{Float, Label, Matrix, Predictions, Result, TesseractError, gini_from_counts};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 /// A **decision stump**: a decision tree with depth 1 (a single split).
 ///
 /// A stump learns:
@@ -122,88 +125,195 @@ impl DecisionStump {
         let &max_label = y.iter().max().ok_or(TesseractError::InvalidTrainingData)?;
         let num_classes = max_label + 1;
 
-        let mut best_feature = 0usize;
-        let mut best_threshold: Float = 0.0;
-        let mut best_score: Float = Float::INFINITY;
-        let mut best_left_label: Label = 0;
-        let mut best_right_label: Label = 0;
-
-        // Reused buffers (avoid repeated allocation per feature)
-        let mut pairs: Vec<(Float, Label)> = Vec::with_capacity(n);
-        let mut left_counts = vec![0usize; num_classes];
-        let mut right_counts = vec![0usize; num_classes];
-
-        for feature in 0..d {
-            pairs.clear();
-
-            // Build (value, label) for this feature and validate values.
-            let col = x.column(feature);
-            for i in 0..n {
-                let v = col[i];
-                if v.is_nan() {
-                    return Err(TesseractError::InvalidValue {
-                        message: "Expected float got NaN.".into(),
-                    });
-                }
-                pairs.push((v, y[i]));
-            }
-
-            // Sort by feature value (CART-style sweep)
-            pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
-
-            // Init counts: all samples start on the right
-            left_counts.fill(0);
-            right_counts.fill(0);
-            for &(_, label) in &pairs {
-                if label >= num_classes {
-                    return Err(TesseractError::InvalidTrainingData);
-                }
-                right_counts[label] += 1;
-            }
-
-            let mut n_left = 0usize;
-            let mut n_right = n;
-
-            // Sweep split point between i and i+1
-            for i in 0..(n - 1) {
-                let (v_i, label_i) = pairs[i];
-
-                // Move one sample from right -> left
-                left_counts[label_i] += 1;
-                right_counts[label_i] -= 1;
-                n_left += 1;
-                n_right -= 1;
-
-                // Only consider thresholds between distinct values
-                let v_next = pairs[i + 1].0;
-                if v_i == v_next {
-                    continue;
-                }
-
-                // Weighted Gini score for this candidate split
-                let g_l = gini_from_counts(&left_counts, n_left);
-                let g_r = gini_from_counts(&right_counts, n_right);
-
-                let w_l = n_left as Float / n as Float;
-                let w_r = n_right as Float / n as Float;
-                let score = w_l * g_l + w_r * g_r;
-
-                if score < best_score {
-                    best_score = score;
-                    best_feature = feature;
-                    best_threshold = (v_i + v_next) * 0.5;
-
-                    // Leaf predictions: majority class on each side
-                    best_left_label = argmax_count(&left_counts);
-                    best_right_label = argmax_count(&right_counts);
-                }
-            }
+        // Structure to hold the best split for a single feature
+        #[derive(Debug, Clone)]
+        #[allow(dead_code)]
+        struct FeatureSplit {
+            feature: usize,
+            threshold: Float,
+            score: Float,
+            left_label: Label,
+            right_label: Label,
         }
 
-        self.feature_index = best_feature;
-        self.feature_threshold = best_threshold;
-        self.left_class = best_left_label;
-        self.right_class = best_right_label;
+        #[cfg(feature = "parallel")]
+        let best_split = (0..d)
+            .into_par_iter()
+            .map(|feature| {
+                let mut pairs: Vec<(Float, Label)> = Vec::with_capacity(n);
+                let mut left_counts = vec![0usize; num_classes];
+                let mut right_counts = vec![0usize; num_classes];
+
+                // Build (value, label) for this feature
+                let col = x.column(feature);
+                for i in 0..n {
+                    let v = col[i];
+                    if v.is_nan() {
+                        return Err(TesseractError::InvalidValue {
+                            message: "Expected float got NaN.".into(),
+                        });
+                    }
+                    pairs.push((v, y[i]));
+                }
+
+                // Sort by feature value
+                pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+                // Init counts: all samples start on the right
+                left_counts.fill(0);
+                right_counts.fill(0);
+                for &(_, label) in &pairs {
+                    if label >= num_classes {
+                        return Err(TesseractError::InvalidTrainingData);
+                    }
+                    right_counts[label] += 1;
+                }
+
+                let mut n_left = 0usize;
+                let mut n_right = n;
+                let mut feature_best_score = Float::INFINITY;
+                let mut feature_best_threshold = 0.0;
+                let mut feature_best_left_label = 0;
+                let mut feature_best_right_label = 0;
+
+                // Sweep split point between i and i+1
+                for i in 0..(n - 1) {
+                    let (v_i, label_i) = pairs[i];
+
+                    // Move one sample from right -> left
+                    left_counts[label_i] += 1;
+                    right_counts[label_i] -= 1;
+                    n_left += 1;
+                    n_right -= 1;
+
+                    // Only consider thresholds between distinct values
+                    let v_next = pairs[i + 1].0;
+                    if v_i == v_next {
+                        continue;
+                    }
+
+                    // Weighted Gini score for this candidate split
+                    let g_l = gini_from_counts(&left_counts, n_left);
+                    let g_r = gini_from_counts(&right_counts, n_right);
+
+                    let w_l = n_left as Float / n as Float;
+                    let w_r = n_right as Float / n as Float;
+                    let score = w_l * g_l + w_r * g_r;
+
+                    if score < feature_best_score {
+                        feature_best_score = score;
+                        feature_best_threshold = (v_i + v_next) * 0.5;
+                        feature_best_left_label = argmax_count(&left_counts);
+                        feature_best_right_label = argmax_count(&right_counts);
+                    }
+                }
+
+                Ok(FeatureSplit {
+                    feature,
+                    threshold: feature_best_threshold,
+                    score: feature_best_score,
+                    left_label: feature_best_left_label,
+                    right_label: feature_best_right_label,
+                })
+            })
+            .collect::<Result<Vec<FeatureSplit>>>()?
+            .into_iter()
+            .min_by(|a, b| a.score.total_cmp(&b.score))
+            .unwrap();
+
+        #[cfg(not(feature = "parallel"))]
+        let best_split = {
+            let mut best_feature = 0usize;
+            let mut best_threshold: Float = 0.0;
+            let mut best_score: Float = Float::INFINITY;
+            let mut best_left_label: Label = 0;
+            let mut best_right_label: Label = 0;
+
+            // Reused buffers (avoid repeated allocation per feature)
+            let mut pairs: Vec<(Float, Label)> = Vec::with_capacity(n);
+            let mut left_counts = vec![0usize; num_classes];
+            let mut right_counts = vec![0usize; num_classes];
+
+            for feature in 0..d {
+                pairs.clear();
+
+                // Build (value, label) for this feature and validate values.
+                let col = x.column(feature);
+                for i in 0..n {
+                    let v = col[i];
+                    if v.is_nan() {
+                        return Err(TesseractError::InvalidValue {
+                            message: "Expected float got NaN.".into(),
+                        });
+                    }
+                    pairs.push((v, y[i]));
+                }
+
+                // Sort by feature value (CART-style sweep)
+                pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+                // Init counts: all samples start on the right
+                left_counts.fill(0);
+                right_counts.fill(0);
+                for &(_, label) in &pairs {
+                    if label >= num_classes {
+                        return Err(TesseractError::InvalidTrainingData);
+                    }
+                    right_counts[label] += 1;
+                }
+
+                let mut n_left = 0usize;
+                let mut n_right = n;
+
+                // Sweep split point between i and i+1
+                for i in 0..(n - 1) {
+                    let (v_i, label_i) = pairs[i];
+
+                    // Move one sample from right -> left
+                    left_counts[label_i] += 1;
+                    right_counts[label_i] -= 1;
+                    n_left += 1;
+                    n_right -= 1;
+
+                    // Only consider thresholds between distinct values
+                    let v_next = pairs[i + 1].0;
+                    if v_i == v_next {
+                        continue;
+                    }
+
+                    // Weighted Gini score for this candidate split
+                    let g_l = gini_from_counts(&left_counts, n_left);
+                    let g_r = gini_from_counts(&right_counts, n_right);
+
+                    let w_l = n_left as Float / n as Float;
+                    let w_r = n_right as Float / n as Float;
+                    let score = w_l * g_l + w_r * g_r;
+
+                    if score < best_score {
+                        best_score = score;
+                        best_feature = feature;
+                        best_threshold = (v_i + v_next) * 0.5;
+
+                        // Leaf predictions: majority class on each side
+                        best_left_label = argmax_count(&left_counts);
+                        best_right_label = argmax_count(&right_counts);
+                    }
+                }
+            }
+
+            FeatureSplit {
+                feature: best_feature,
+                threshold: best_threshold,
+                score: best_score,
+                left_label: best_left_label,
+                right_label: best_right_label,
+            }
+        };
+
+        self.feature_index = best_split.feature;
+        self.feature_threshold = best_split.threshold;
+        self.left_class = best_split.left_label;
+        self.right_class = best_split.right_label;
         self.fitted = true;
 
         Ok(())
@@ -251,15 +361,24 @@ impl DecisionStump {
         }
 
         let col = x.column(self.feature_index);
-        let mut predictions = vec![0usize; n];
-
         let t = self.feature_threshold;
         let left = self.left_class;
         let right = self.right_class;
 
-        for (i, out) in predictions.iter_mut().enumerate() {
-            *out = if col[i] <= t { left } else { right };
-        }
+        #[cfg(feature = "parallel")]
+        let predictions: Predictions = (0..n)
+            .into_par_iter()
+            .map(|i| if col[i] <= t { left } else { right })
+            .collect();
+
+        #[cfg(not(feature = "parallel"))]
+        let predictions: Predictions = {
+            let mut preds = vec![0usize; n];
+            for (i, out) in preds.iter_mut().enumerate() {
+                *out = if col[i] <= t { left } else { right };
+            }
+            preds
+        };
 
         Ok(predictions)
     }

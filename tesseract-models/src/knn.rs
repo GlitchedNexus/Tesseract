@@ -4,6 +4,9 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use tesseract_core::{Matrix, Predictions, Result, TesseractError};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 /// A neighbor candidate used during KNN search.
 ///
 /// This struct stores:
@@ -188,15 +191,78 @@ impl KNN {
         }
 
         let mut preds = vec![0usize; x.nrows()];
-        let mut counts: HashMap<usize, usize> = HashMap::new();
 
-        for (i, out) in preds.iter_mut().enumerate() {
-            let xi = x.row(i);
+        #[cfg(feature = "parallel")]
+        let result: Result<Predictions> = {
+            preds
+                .par_iter_mut()
+                .enumerate()
+                .map(|(i, out)| {
+                    let xi = x.row(i);
+                    let mut heap: BinaryHeap<Neighbour> = BinaryHeap::with_capacity(self.k);
+                    let mut counts: HashMap<usize, usize> = HashMap::new();
 
-            // Max-heap of the k best neighbors seen so far.
-            let mut heap: BinaryHeap<Neighbour> = BinaryHeap::with_capacity(self.k);
+                    for (j, aj) in a.row_iter().enumerate() {
+                        let mut dist2: f32 = 0.0;
+                        for (&av, &xv) in aj.iter().zip(xi.iter()) {
+                            let diff = av - xv;
+                            dist2 += diff * diff;
+                        }
 
-            for (j, aj) in a.row_iter().enumerate() {
+                        if dist2.is_nan() {
+                            return Err(TesseractError::InvalidValue {
+                                message: String::from("Encountered NaN when calculating distance."),
+                            });
+                        }
+
+                        let cand = Neighbour { dist2, idx: j };
+
+                        if heap.len() < self.k {
+                            heap.push(cand);
+                        } else if let Some(&worst) = heap.peek() {
+                            if cand.dist2 < worst.dist2 {
+                                heap.pop();
+                                heap.push(cand);
+                            }
+                        }
+                    }
+
+                    // Majority vote
+                    counts.clear();
+                    let mut best_label: usize = 0;
+                    let mut best_count: usize = 0;
+                    let mut best_closest: f32 = f32::INFINITY;
+
+                    for n in heap.into_iter() {
+                        let label = y[n.idx];
+                        let c = counts.entry(label).or_insert(0);
+                        *c += 1;
+
+                        if *c > best_count || (*c == best_count && n.dist2 < best_closest) {
+                            best_count = *c;
+                            best_label = label;
+                            best_closest = n.dist2;
+                        }
+                    }
+
+                    *out = best_label;
+                    Ok(())
+                })
+                .collect::<Result<Vec<()>>>()?;
+            Ok(preds)
+        };
+
+        #[cfg(not(feature = "parallel"))]
+        let result: Result<Predictions> = {
+            let mut counts: HashMap<usize, usize> = HashMap::new();
+
+            for (i, out) in preds.iter_mut().enumerate() {
+                let xi = x.row(i);
+
+                // Max-heap of the k best neighbors seen so far.
+                let mut heap: BinaryHeap<Neighbour> = BinaryHeap::with_capacity(self.k);
+
+                for (j, aj) in a.row_iter().enumerate() {
                 // Squared Euclidean distance computed without allocating temporary vectors.
                 let mut dist2: f32 = 0.0;
                 for (&av, &xv) in aj.iter().zip(xi.iter()) {
@@ -243,10 +309,13 @@ impl KNN {
                 }
             }
 
-            *out = best_label;
-        }
+                *out = best_label;
+            }
 
-        Ok(preds)
+            Ok(preds)
+        };
+
+        result
     }
 }
 

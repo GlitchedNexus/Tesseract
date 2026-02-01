@@ -1,5 +1,8 @@
 use tesseract_core::{Float, Matrix, Result, TesseractError, Vector};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 /// Ordinary Least Squares (OLS) **linear regression** for a single continuous target.
 ///
 /// This model fits parameters `(w, b)` for the affine predictor:
@@ -169,10 +172,23 @@ impl LinearRegression {
         }
 
         // --- Compute means μ_x (feature means) and μ_y (target mean) ---
-        let mut mu_x = Vector::zeros(d);
-        for j in 0..d {
-            mu_x[j] = x.column(j).sum() / n as Float;
-        }
+        #[cfg(feature = "parallel")]
+        let mu_x: Vector = {
+            let sums: Vec<Float> = (0..d)
+                .into_par_iter()
+                .map(|j| x.column(j).sum())
+                .collect();
+            Vector::from_iterator(d, sums.into_iter().map(|s| s / n as Float))
+        };
+
+        #[cfg(not(feature = "parallel"))]
+        let mu_x: Vector = {
+            let mut means = Vector::zeros(d);
+            for j in 0..d {
+                means[j] = x.column(j).sum() / n as Float;
+            }
+            means
+        };
         let mu_y = y.sum() / n as Float;
 
         // --- Center X and y: X_c = X - 1 μ_xᵀ, y_c = y - μ_y·1 ---
