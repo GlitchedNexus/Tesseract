@@ -5,130 +5,95 @@ It focuses on correctness, performance, and a clean developer experience while s
 
 The project is organized as a Cargo workspace with small, focused crates and a thin public facade.
 
----
+## Design principles
 
-## Design Principles
-
-1. **Minimal dependencies and resource usage**
+1. **Minimal dependencies and resource usage**  
    Each subsystem lives in its own crate with narrowly scoped dependencies. Heavy dependencies are optional and feature-gated.
-
-2. **Clear separation of concerns**
+2. **Clear separation of concerns**  
    Core types, models, metrics, optimizers, and I/O are isolated to improve maintainability and compile times.
-
-3. **Correctness first**
+3. **Correctness first**  
    Strong typing, explicit error handling, and predictable APIs are prioritized over implicit behavior.
-
-4. **Practical documentation**
+4. **Practical documentation**  
    Public APIs are documented with usage examples and clear error semantics.
 
----
+## Current state
 
-## Workspace Structure
+Tesseract is pre-stable and under active development.
 
-```
-tesseract/
-├── tesseract              # Public facade crate
-├── tesseract-core         # Core types, errors, numeric aliases
-├── tesseract-io           # Data loading (CSV, etc.)
-├── tesseract-metrics      # Evaluation metrics
-├── tesseract-models       # ML models
-├── tesseract-optimizers   # Gradient-based optimizers
-├── tesseract-preprocessors# Data preprocessing utilities
-└── Cargo.toml             # Workspace manifest
-```
+Most implemented code is in `tesseract-core` and `tesseract-models`; several other crates are currently scaffolds.
 
-The `tesseract` crate re-exports the public API, while internal crates depend directly on `tesseract-core`.
+## Workspace crates
 
----
+| Crate | Purpose | State |
+| :--- | :--- | :--- |
+| `tesseract` | Public facade crate that re-exports workspace APIs | Implemented |
+| `tesseract-core` | Core types (`Matrix`, `Vector`, `Float`, `Label`), error types, impurity utilities | Implemented |
+| `tesseract-models` | ML algorithms | Implemented |
+| `tesseract-io` | I/O modules (feature-gated CSV module) | Scaffold/in progress |
+| `tesseract-metrics` | Classification/regression metrics modules | Scaffold/in progress |
+| `tesseract-datasets` | Dataset and split modules | Scaffold/in progress |
+| `tesseract-optimizers` | Gradient-descent optimizer modules | Scaffold/in progress |
+| `tesseract-preprocessors` | Encoders, imputers, scalers | Scaffold/in progress |
 
-## Core Concepts
+## Implemented algorithms (`tesseract-models`)
 
-* **Matrix / Vector backend**:
-  Uses `nalgebra` for 2D matrices and vectors (`DMatrix`, `DVector`).
+| Name | Task | Status | Notes |
+| :--- | :--- | :--- | :--- |
+| `KNN` | Supervised classification | Implemented + unit tested | Majority vote over nearest neighbors (squared Euclidean distance) |
+| `DecisionStump` | Supervised classification | Implemented + unit tested | Depth-1 CART-style split using weighted Gini impurity |
+| `DecisionTree` | Supervised classification | Implemented + unit tested | Recursive CART-style tree with depth/leaf split controls |
+| `LinearRegression` | Supervised regression | Implemented + unit tested | OLS using centered data + SVD solve |
+| `KMeans` | Unsupervised clustering | Implemented + unit tested | Lloyd's algorithm with K-Means++ initialization |
+| `KMedians` | Unsupervised clustering | Implemented + unit tested | L1 distance + coordinate-wise median updates |
 
-* **Numeric types**:
+## Core concepts
 
-  * `Float` (`f32`) for model parameters and data
-  * `Scalar` (`f64`) for aggregated statistics and metrics
+- Linear algebra backend: `nalgebra` (`DMatrix`/`DVector` via type aliases)
+- Numeric aliases from `tesseract-core`:
+  - `Float = f32`
+  - `Scalar = f64`
+- Unified error type: `TesseractError`
+- Shared result alias: `Result<T>`
 
-* **Errors**:
-  All fallible operations return a unified `Result<T, TesseractError>`.
-
----
-
-## Model Support
-
-### Implemented
-
-* k-Nearest Neighbors (k-NN)
-* Decision Stump (classification)
-* Linear Regression
-
-### Planned / In Progress
-
-* Naive Bayes
-* Decision Tree
-* Random Tree / Random Forest
-* Logistic Regression
-* k-Means Clustering
-* Neural Networks
-
-The initial focus is on **classical machine learning models operating on 2D feature matrices**. Higher-dimensional tensor models (e.g., CNNs) are planned for later phases.
-
----
-
-## Example
+## Quick example
 
 ```rust
-use tesseract::{Matrix, LinearRegression};
+use tesseract::{LinearRegression, Matrix, Result, Vector};
 
-let x = Matrix::from_row_slice(
-    3, 2,
-    &[
-        1.0, 2.0,
-        2.0, 3.0,
-        3.0, 4.0,
-    ],
-);
+fn main() -> Result<()> {
+    // y = 2x + 3
+    let x = Matrix::from_row_slice(4, 1, &[1.0, 2.0, 3.0, 4.0]);
+    let y = Vector::from_vec(vec![5.0, 7.0, 9.0, 11.0]);
 
-let y = vec![3.0, 5.0, 7.0];
+    let mut model = LinearRegression::new();
+    model.fit(&x, &y)?;
 
-let mut model = LinearRegression::new();
-model.fit(&x, &y).unwrap();
+    let preds = model.predict(&x)?;
+    println!("{preds:?}");
 
-let preds = model.predict(&x).unwrap();
+    Ok(())
+}
 ```
 
----
+## Feature flags (`tesseract` crate)
 
-## Feature Flags
+- Default features: `io-csv`, `rng`
+- `io-csv` -> enables `tesseract-io/io-csv`
+- `rng` -> enables randomized model paths in `tesseract-models` (required by `KMeans` and `KMedians`)
+- `parallel` -> enables rayon-backed parallel code paths in `tesseract-models` and `tesseract-metrics`
+- `serde` -> enables serde support in `tesseract-models` and `tesseract-io`
+- `rkyv` -> forwards the `rkyv` feature to `tesseract-models`
 
-Optional dependencies are feature-gated:
-
-* `io-csv` — CSV loading support
-* `rng` — Randomized algorithms (e.g., k-NN tie breaking, initialization)
-
-By default, common features are enabled. You can opt out with:
+Build without defaults:
 
 ```bash
 cargo build --no-default-features
 ```
 
----
-
-## Status
-
-Tesseract is under active development and should be considered **pre-stable**.
-APIs may evolve as models and abstractions mature.
-
----
-
 ## License
 
-MIT License.
+MIT
 
----
+## Docs
 
-## Documentation
-
-Additional design and architecture documentation is available in the `docs/` directory.
+See `docs/README.md` for documentation structure.
