@@ -1,32 +1,11 @@
-use std::any::Any;
-
-use tesseract_core::{Float, Matrix, Predictions, Result, TesseractError};
-
-enum NODE {
-    LABEL(usize),
-    NODE(DecisionTree),
-}
+use tesseract_core::{Predictions, Result};
 
 /// Max depth is the maximum number of edges between NODE & root.
-pub struct DecisionTree {
-    max_depth: usize,
-    feature_index: usize,
-    feature_threshold: Float,
-    left: Option<Box<NODE>>,
-    right: Option<Box<NODE>>,
-    isFitted: bool,
-}
+pub struct DecisionTree {}
 
 impl Default for DecisionTree {
     fn default() -> Self {
-        Self {
-            max_depth: 0,
-            isFitted: false,
-            feature_index: 0,
-            feature_threshold: 0.0,
-            left: None,
-            right: None,
-        }
+        Self {}
     }
 }
 
@@ -37,11 +16,7 @@ impl DecisionTree {
 
     pub fn fit() {}
 
-    pub fn predict(&self, x: Matrix, depth_left: usize) -> Result<Predictions> {
-        if !self.isFitted {
-            return Err(TesseractError::NotFitted);
-        }
-
+    pub fn predict(&self) -> Result<Predictions> {
         // DFS For Prediction
         let predictions = Predictions::new();
 
