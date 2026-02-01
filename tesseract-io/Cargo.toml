@@ -8,7 +8,9 @@ license.workspace = true
 [dependencies]
 tesseract-core = { path = "../tesseract-core" }
 csv = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 
 [features]
 default = []
 io-csv = ["dep:csv"]
+serde = ["dep:serde"]

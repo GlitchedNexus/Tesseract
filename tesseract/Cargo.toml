@@ -17,3 +17,6 @@ tesseract-preprocessors = { path = "../tesseract-preprocessors" }
 default = ["io-csv", "rng"]
 io-csv = ["tesseract-io/io-csv"]
 rng = ["tesseract-models/rng"]
+parallel = ["tesseract-models/parallel", "tesseract-metrics/parallel"]
+serde = ["tesseract-models/serde", "tesseract-io/serde"]
+rkyv = ["tesseract-models/rkyv"]

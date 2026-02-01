@@ -8,7 +8,13 @@ license.workspace = true
 [dependencies]
 tesseract-core = { path = "../tesseract-core" }
 rand = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+rkyv = { workspace = true, optional = true }
 
 [features]
 default = []
 rng = ["dep:rand"]
+parallel = ["dep:rayon"]
+serde = ["dep:serde"]
+rkyv = ["dep:rkyv"]

@@ -7,3 +7,9 @@ license.workspace = true
 
 [dependencies]
 tesseract-core = { path = "../tesseract-core" }
+rayon = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+
+[features]
+parallel = ["dep:rayon"]
+serde = ["dep:serde"]
