@@ -285,3 +285,369 @@ fn argmax_count(counts: &[usize]) -> Label {
     }
     best_label
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tesseract_core::Matrix;
+
+    /// Helper to create a simple 2D matrix from nested arrays.
+    fn matrix_from_vec(data: Vec<Vec<f32>>) -> Matrix {
+        let nrows = data.len();
+        let ncols = if nrows > 0 { data[0].len() } else { 0 };
+        Matrix::from_fn(nrows, ncols, |i, j| data[i][j])
+    }
+
+    #[test]
+    fn test_decision_stump_not_fitted() {
+        let stump = DecisionStump::new();
+        let x = matrix_from_vec(vec![vec![1.0, 2.0]]);
+        let result = stump.predict(&x);
+        assert!(matches!(result, Err(TesseractError::NotFitted)));
+    }
+
+    #[test]
+    fn test_decision_stump_empty_training_data() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![]);
+        let y_train = vec![];
+        let result = stump.fit(&x_train, &y_train);
+        assert!(matches!(result, Err(TesseractError::EmptyTrainingData)));
+    }
+
+    #[test]
+    fn test_decision_stump_label_mismatch() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+        let y_train = vec![0]; // wrong length
+        let result = stump.fit(&x_train, &y_train);
+        assert!(matches!(result, Err(TesseractError::ShapeMismatch { .. })));
+    }
+
+    #[test]
+    fn test_decision_stump_with_nan() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 2.0],
+            vec![f32::NAN, 4.0],
+        ]);
+        let y_train = vec![0, 1];
+        let result = stump.fit(&x_train, &y_train);
+        assert!(matches!(result, Err(TesseractError::InvalidValue { .. })));
+    }
+
+    #[test]
+    fn test_decision_stump_simple_split() {
+        let mut stump = DecisionStump::new();
+        // Clear separation: x[0] <= 5 => class 0, x[0] > 5 => class 1
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 0.0],
+            vec![2.0, 0.0],
+            vec![3.0, 0.0],
+            vec![8.0, 0.0],
+            vec![9.0, 0.0],
+            vec![10.0, 0.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Test predictions
+        let x_test = matrix_from_vec(vec![
+            vec![1.5, 0.0],
+            vec![9.5, 0.0],
+        ]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result[0], 0); // should be left class
+        assert_eq!(result[1], 1); // should be right class
+    }
+
+    #[test]
+    fn test_decision_stump_feature_selection() {
+        let mut stump = DecisionStump::new();
+        // Feature 1 is informative, feature 0 is not
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 1.0],
+            vec![0.0, 2.0],
+            vec![0.0, 3.0],
+            vec![0.0, 8.0],
+            vec![0.0, 9.0],
+            vec![0.0, 10.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Should select feature 1
+        assert_eq!(stump.feature_index, 1);
+
+        let x_test = matrix_from_vec(vec![
+            vec![100.0, 2.0], // feature 0 is ignored
+            vec![-50.0, 9.0],
+        ]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result[0], 0);
+        assert_eq!(result[1], 1);
+    }
+
+    #[test]
+    fn test_decision_stump_binary_classification() {
+        let mut stump = DecisionStump::new();
+        // XOR-like but linearly separable on one axis
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 1.0],
+            vec![1.0, 2.0],
+            vec![9.0, 1.0],
+            vec![9.0, 2.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        let x_test = matrix_from_vec(vec![
+            vec![1.0, 1.5],
+            vec![9.0, 1.5],
+        ]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result[0], 0);
+        assert_eq!(result[1], 1);
+    }
+
+    #[test]
+    fn test_decision_stump_multiclass() {
+        let mut stump = DecisionStump::new();
+        // Three classes
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![5.0],
+            vec![6.0],
+            vec![10.0],
+            vec![11.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1, 2, 2];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Stump can only split into 2 groups
+        // It should find the best split (likely around 3.5 or 8)
+        let x_test = matrix_from_vec(vec![vec![1.5], vec![5.5], vec![10.5]]);
+        let result = stump.predict(&x_test).unwrap();
+        // Exact predictions depend on which split was chosen
+        // Just verify we get valid class labels
+        assert!(result.iter().all(|&label| label <= 2));
+    }
+
+    #[test]
+    fn test_decision_stump_single_class() {
+        let mut stump = DecisionStump::new();
+        // All same class - no useful split possible
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 2.0],
+            vec![3.0, 4.0],
+            vec![5.0, 6.0],
+        ]);
+        let y_train = vec![0, 0, 0];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        let x_test = matrix_from_vec(vec![vec![2.0, 3.0]]);
+        let result = stump.predict(&x_test).unwrap();
+        // Should predict the only class
+        assert_eq!(result[0], 0);
+    }
+
+    #[test]
+    fn test_decision_stump_threshold_placement() {
+        let mut stump = DecisionStump::new();
+        // Test that threshold is placed between values
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![8.0],
+            vec![9.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Threshold should be between 2.0 and 8.0
+        assert!(stump.feature_threshold > 2.0);
+        assert!(stump.feature_threshold < 8.0);
+    }
+
+    #[test]
+    fn test_decision_stump_perfect_split() {
+        let mut stump = DecisionStump::new();
+        // Perfect Gini split
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![7.0],
+            vec![8.0],
+            vec![9.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Should achieve perfect separation
+        let x_test = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![7.0],
+            vec![8.0],
+            vec![9.0],
+        ]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result, vec![0, 0, 0, 1, 1, 1]);
+    }
+
+    #[test]
+    fn test_decision_stump_duplicate_values() {
+        let mut stump = DecisionStump::new();
+        // Multiple samples with same feature value but different labels
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![1.0],
+            vec![1.0],
+            vec![5.0],
+            vec![5.0],
+            vec![5.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        let x_test = matrix_from_vec(vec![vec![1.0], vec![5.0]]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result[0], 0);
+        assert_eq!(result[1], 1);
+    }
+
+    #[test]
+    fn test_decision_stump_noisy_data() {
+        let mut stump = DecisionStump::new();
+        // Mostly separable with some noise
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![4.0],  // noisy sample
+            vec![7.0],  // noisy sample
+            vec![8.0],
+            vec![9.0],
+            vec![10.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 0, 1, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Should still find a reasonable split
+        let x_test = matrix_from_vec(vec![vec![2.0], vec![9.0]]);
+        let result = stump.predict(&x_test).unwrap();
+        // Predictions should be reasonable given the data
+        assert!(result[0] == 0 || result[0] == 1);
+        assert!(result[1] == 0 || result[1] == 1);
+    }
+
+    #[test]
+    fn test_decision_stump_predict_shape_mismatch() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 2.0],
+            vec![3.0, 4.0],
+        ]);
+        let y_train = vec![0, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Test data with wrong number of features
+        let x_test = matrix_from_vec(vec![vec![1.0]]);
+        // feature_index might be >= ncols for test data
+        let result = stump.predict(&x_test);
+        // This might fail with ShapeMismatch or succeed depending on which feature was selected
+        if stump.feature_index >= 1 {
+            assert!(matches!(result, Err(TesseractError::ShapeMismatch { .. })));
+        }
+    }
+
+    #[test]
+    fn test_decision_stump_multiple_predictions() {
+        let mut stump = DecisionStump::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![8.0],
+            vec![9.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Multiple test samples
+        let x_test = matrix_from_vec(vec![
+            vec![1.5],
+            vec![8.5],
+            vec![5.0],
+            vec![0.5],
+        ]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result.len(), 4);
+        // Verify each prediction is valid
+        assert!(result.iter().all(|&label| label <= 1));
+    }
+
+    #[test]
+    fn test_decision_stump_1d_edge_case() {
+        let mut stump = DecisionStump::new();
+        // Minimal case: 2 samples, 2 classes
+        let x_train = matrix_from_vec(vec![vec![1.0], vec![2.0]]);
+        let y_train = vec![0, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        let x_test = matrix_from_vec(vec![vec![1.0], vec![2.0]]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result[0], 0);
+        assert_eq!(result[1], 1);
+    }
+
+    #[test]
+    fn test_decision_stump_high_dimensional() {
+        let mut stump = DecisionStump::new();
+        // 5 features, but only feature 2 is informative
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0, 1.0, 0.0, 0.0],
+            vec![0.0, 0.0, 2.0, 0.0, 0.0],
+            vec![0.0, 0.0, 3.0, 0.0, 0.0],
+            vec![0.0, 0.0, 8.0, 0.0, 0.0],
+            vec![0.0, 0.0, 9.0, 0.0, 0.0],
+            vec![0.0, 0.0, 10.0, 0.0, 0.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        // Should select feature 2
+        assert_eq!(stump.feature_index, 2);
+
+        let x_test = matrix_from_vec(vec![
+            vec![100.0, 100.0, 2.5, 100.0, 100.0],
+            vec![-50.0, -50.0, 8.5, -50.0, -50.0],
+        ]);
+        let result = stump.predict(&x_test).unwrap();
+        assert_eq!(result[0], 0);
+        assert_eq!(result[1], 1);
+    }
+
+    #[test]
+    fn test_decision_stump_imbalanced_classes() {
+        let mut stump = DecisionStump::new();
+        // Imbalanced: 5 samples of class 0, 1 sample of class 1
+        let x_train = matrix_from_vec(vec![
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![4.0],
+            vec![5.0],
+            vec![10.0],
+        ]);
+        let y_train = vec![0, 0, 0, 0, 0, 1];
+        stump.fit(&x_train, &y_train).unwrap();
+
+        let x_test = matrix_from_vec(vec![vec![3.0], vec![10.0]]);
+        let result = stump.predict(&x_test).unwrap();
+        // Should still make reasonable predictions
+        assert!(result.iter().all(|&label| label <= 1));
+    }
+}

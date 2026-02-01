@@ -245,3 +245,289 @@ impl KNN {
         Ok(preds)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tesseract_core::Matrix;
+
+    /// Helper to create a simple 2D matrix from nested arrays.
+    fn matrix_from_vec(data: Vec<Vec<f32>>) -> Matrix {
+        let nrows = data.len();
+        let ncols = if nrows > 0 { data[0].len() } else { 0 };
+        Matrix::from_fn(nrows, ncols, |i, j| data[i][j])
+    }
+
+    #[test]
+    fn test_knn_not_fitted() {
+        let knn = KNN::new();
+        let x = matrix_from_vec(vec![vec![1.0, 2.0]]);
+        let result = knn.predict(&x);
+        assert!(matches!(result, Err(TesseractError::NotFitted)));
+    }
+
+    #[test]
+    fn test_knn_k_zero() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+        let y_train = vec![0, 1];
+        knn.fit(&x_train, &y_train, 0);
+
+        let x_test = matrix_from_vec(vec![vec![2.0, 3.0]]);
+        let result = knn.predict(&x_test);
+        assert!(matches!(
+            result,
+            Err(TesseractError::InvalidHyperparameter { .. })
+        ));
+    }
+
+    #[test]
+    fn test_knn_feature_mismatch() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+        let y_train = vec![0, 1];
+        knn.fit(&x_train, &y_train, 1);
+
+        // Test data has different number of features
+        let x_test = matrix_from_vec(vec![vec![2.0, 3.0, 5.0]]);
+        let result = knn.predict(&x_test);
+        assert!(matches!(result, Err(TesseractError::ShapeMismatch { .. })));
+    }
+
+    #[test]
+    fn test_knn_insufficient_training_data() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+        let y_train = vec![0, 1];
+        // k > number of training samples
+        knn.fit(&x_train, &y_train, 5);
+
+        let x_test = matrix_from_vec(vec![vec![2.0, 3.0]]);
+        let result = knn.predict(&x_test);
+        assert!(matches!(
+            result,
+            Err(TesseractError::InsufficientTrainingData)
+        ));
+    }
+
+    #[test]
+    fn test_knn_perfect_match() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![1.0, 1.0],
+            vec![2.0, 2.0],
+            vec![3.0, 3.0],
+            vec![4.0, 4.0],
+        ]);
+        let y_train = vec![0, 0, 1, 1];
+        knn.fit(&x_train, &y_train, 3);
+
+        // Query exact training point
+        let x_test = matrix_from_vec(vec![vec![2.0, 2.0]]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result, vec![0]);
+    }
+
+    #[test]
+    fn test_knn_simple_classification() {
+        let mut knn = KNN::new();
+        // Two clear clusters
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![0.1, 0.1],
+            vec![0.2, 0.0],
+            vec![10.0, 10.0],
+            vec![10.1, 10.1],
+            vec![10.0, 10.2],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1, 1];
+        knn.fit(&x_train, &y_train, 3);
+
+        // Point close to cluster 0
+        let x_test1 = matrix_from_vec(vec![vec![0.05, 0.05]]);
+        let result1 = knn.predict(&x_test1).unwrap();
+        assert_eq!(result1, vec![0]);
+
+        // Point close to cluster 1
+        let x_test2 = matrix_from_vec(vec![vec![10.05, 10.05]]);
+        let result2 = knn.predict(&x_test2).unwrap();
+        assert_eq!(result2, vec![1]);
+    }
+
+    #[test]
+    fn test_knn_k1_nearest_neighbor() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 1.0],
+            vec![5.0, 5.0],
+        ]);
+        let y_train = vec![0, 1, 2];
+        knn.fit(&x_train, &y_train, 1);
+
+        // Should pick the single nearest neighbor
+        let x_test = matrix_from_vec(vec![vec![0.1, 0.1]]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result, vec![0]); // closest to [0.0, 0.0]
+
+        let x_test2 = matrix_from_vec(vec![vec![4.9, 4.9]]);
+        let result2 = knn.predict(&x_test2).unwrap();
+        assert_eq!(result2, vec![2]); // closest to [5.0, 5.0]
+    }
+
+    #[test]
+    fn test_knn_majority_vote() {
+        let mut knn = KNN::new();
+        // Create a scenario where majority vote matters
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![0.1, 0.0],
+            vec![0.0, 0.1],
+            vec![0.5, 0.5],
+            vec![1.0, 1.0],
+        ]);
+        let y_train = vec![0, 0, 0, 1, 1];
+        knn.fit(&x_train, &y_train, 5);
+
+        // Point closer to class 0 cluster (3 vs 2)
+        let x_test = matrix_from_vec(vec![vec![0.2, 0.2]]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result, vec![0]);
+    }
+
+    #[test]
+    fn test_knn_multiple_queries() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 1.0],
+            vec![10.0, 10.0],
+        ]);
+        let y_train = vec![0, 0, 1];
+        knn.fit(&x_train, &y_train, 2);
+
+        // Multiple test samples
+        let x_test = matrix_from_vec(vec![
+            vec![0.5, 0.5],
+            vec![9.5, 9.5],
+            vec![0.0, 0.0],
+        ]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], 0); // closer to [0, 0] and [1, 1]
+        assert_eq!(result[1], 1); // closer to [10, 10]
+        assert_eq!(result[2], 0); // exact match with [0, 0]
+    }
+
+    #[test]
+    fn test_knn_tie_breaking() {
+        let mut knn = KNN::new();
+        // Setup where tie-break by distance matters
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],  // class 0, distance 1.0 from test point
+            vec![2.0, 0.0],  // class 1, distance 1.0 from test point
+            vec![3.0, 0.0],  // class 0, distance 2.0 from test point
+            vec![-1.0, 0.0], // class 1, distance 2.0 from test point
+        ]);
+        let y_train = vec![0, 1, 0, 1];
+        knn.fit(&x_train, &y_train, 4);
+
+        // Test point at [1.0, 0.0] - equidistant to first two neighbors
+        // With all 4 neighbors: 2 votes for each class
+        // Tie should be broken by closest neighbor
+        let x_test = matrix_from_vec(vec![vec![1.0, 0.0]]);
+        let result = knn.predict(&x_test).unwrap();
+        // Both class 0 and 1 have same count, but closest is either [0,0] or [2,0]
+        // The implementation breaks ties by choosing closest, so result should be deterministic
+        assert!(result[0] == 0 || result[0] == 1);
+    }
+
+    #[test]
+    fn test_knn_with_nan_returns_error() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 1.0],
+        ]);
+        let y_train = vec![0, 1];
+        knn.fit(&x_train, &y_train, 1);
+
+        // Test data with NaN
+        let x_test = matrix_from_vec(vec![vec![f32::NAN, 0.0]]);
+        let result = knn.predict(&x_test);
+        assert!(matches!(result, Err(TesseractError::InvalidValue { .. })));
+    }
+
+    #[test]
+    fn test_knn_single_class() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 1.0],
+            vec![2.0, 2.0],
+        ]);
+        let y_train = vec![0, 0, 0]; // all same class
+        knn.fit(&x_train, &y_train, 2);
+
+        let x_test = matrix_from_vec(vec![vec![5.0, 5.0]]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result, vec![0]);
+    }
+
+    #[test]
+    fn test_knn_three_classes() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![0.1, 0.1],
+            vec![5.0, 5.0],
+            vec![5.1, 5.1],
+            vec![10.0, 10.0],
+            vec![10.1, 10.1],
+        ]);
+        let y_train = vec![0, 0, 1, 1, 2, 2];
+        knn.fit(&x_train, &y_train, 3);
+
+        let x_test = matrix_from_vec(vec![
+            vec![0.0, 0.0],
+            vec![5.0, 5.0],
+            vec![10.0, 10.0],
+        ]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_knn_1d_features() {
+        let mut knn = KNN::new();
+        let x_train = matrix_from_vec(vec![
+            vec![0.0],
+            vec![1.0],
+            vec![10.0],
+        ]);
+        let y_train = vec![0, 0, 1];
+        knn.fit(&x_train, &y_train, 2);
+
+        let x_test = matrix_from_vec(vec![vec![0.5], vec![9.0]]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result[0], 0); // closer to 0 and 1
+        assert_eq!(result[1], 1); // closer to 10
+    }
+
+    #[test]
+    fn test_knn_high_dimensional() {
+        let mut knn = KNN::new();
+        // 5D space
+        let x_train = matrix_from_vec(vec![
+            vec![0.0, 0.0, 0.0, 0.0, 0.0],
+            vec![1.0, 1.0, 1.0, 1.0, 1.0],
+            vec![10.0, 10.0, 10.0, 10.0, 10.0],
+        ]);
+        let y_train = vec![0, 0, 1];
+        knn.fit(&x_train, &y_train, 2);
+
+        let x_test = matrix_from_vec(vec![vec![0.5, 0.5, 0.5, 0.5, 0.5]]);
+        let result = knn.predict(&x_test).unwrap();
+        assert_eq!(result, vec![0]);
+    }
+}

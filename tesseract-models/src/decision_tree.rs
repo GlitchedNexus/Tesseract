@@ -1,6 +1,5 @@
 use tesseract_core::{Predictions, Result};
 
-/// Max depth is the maximum number of edges between NODE & root.
 pub struct DecisionTree {}
 
 impl Default for DecisionTree {
