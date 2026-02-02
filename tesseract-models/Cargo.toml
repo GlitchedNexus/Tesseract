@@ -15,10 +15,15 @@ rkyv = { workspace = true, optional = true }
 [dev-dependencies]
 serde_json = { workspace = true }
 rkyv = { workspace = true }
+criterion = { workspace = true }
 
 [features]
-default = []
+default = ["rng"]
 rng = ["dep:rand"]
 parallel = ["dep:rayon"]
 rkyv = ["dep:rkyv"]
 serde = ["dep:serde"]
+
+[[bench]]
+name = "model_benchmarks"
+harness = false
