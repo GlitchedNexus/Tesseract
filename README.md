@@ -93,7 +93,3 @@ cargo build --no-default-features
 ## License
 
 MIT
-
-## Docs
-
-See `docs/README.md` for documentation structure.
